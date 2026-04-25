@@ -14,7 +14,7 @@ A lightweight starter plugin for WP Control Deck.
 
 WP Control Deck is a custom WordPress plugin by Vincent Casilla.
 
-This initial release provides a clean, activation-safe boilerplate for future functionality.
+This release adds a WP Control Deck admin menu with controls to disable WordPress comments globally and permanently delete existing comments.
 
 == Installation ==
 
@@ -24,4 +24,6 @@ This initial release provides a clean, activation-safe boilerplate for future fu
 == Changelog ==
 
 = 1.0.0 =
-* Initial boilerplate release.
+* Added the WP Control Deck admin menu.
+* Added a Disable Comments Globally switch.
+* Added a Delete Existing Comments action.
