@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: WP Control Deck
- * Description: A lightweight starter plugin for WP Control Deck.
+ * Description: A lightweight extension that enhances WordPress and helps reduce friction during development.
  * Version: 1.0.0
  * Author: Vincent Casilla
  * Text Domain: wp-control-deck
