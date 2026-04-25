@@ -16,6 +16,8 @@ define( 'WP_CONTROL_DECK_FILE', __FILE__ );
 define( 'WP_CONTROL_DECK_PATH', plugin_dir_path( WP_CONTROL_DECK_FILE ) );
 define( 'WP_CONTROL_DECK_URL', plugin_dir_url( WP_CONTROL_DECK_FILE ) );
 define( 'WP_CONTROL_DECK_DISABLE_COMMENTS_OPTION', 'wp_control_deck_disable_comments_globally' );
+define( 'WP_CONTROL_DECK_DISABLE_GUTENBERG_OPTION', 'wp_control_deck_disable_gutenberg' );
+define( 'WP_CONTROL_DECK_GUTENBERG_EXCLUSIONS_OPTION', 'wp_control_deck_gutenberg_excluded_post_types' );
 
 /**
  * Runs when the plugin is activated.
@@ -43,6 +45,10 @@ function wp_control_deck_bootstrap() {
 
 	if ( wp_control_deck_comments_are_disabled() ) {
 		wp_control_deck_disable_comments();
+	}
+
+	if ( wp_control_deck_gutenberg_is_disabled() ) {
+		wp_control_deck_disable_gutenberg();
 	}
 }
 add_action( 'plugins_loaded', 'wp_control_deck_bootstrap' );
@@ -75,6 +81,26 @@ function wp_control_deck_register_settings() {
 			'default'           => false,
 		)
 	);
+
+	register_setting(
+		'wp_control_deck_settings',
+		WP_CONTROL_DECK_DISABLE_GUTENBERG_OPTION,
+		array(
+			'type'              => 'boolean',
+			'sanitize_callback' => 'wp_validate_boolean',
+			'default'           => false,
+		)
+	);
+
+	register_setting(
+		'wp_control_deck_settings',
+		WP_CONTROL_DECK_GUTENBERG_EXCLUSIONS_OPTION,
+		array(
+			'type'              => 'array',
+			'sanitize_callback' => 'wp_control_deck_sanitize_post_type_exclusions',
+			'default'           => array(),
+		)
+	);
 }
 
 /**
@@ -85,9 +111,12 @@ function wp_control_deck_render_admin_page() {
 		return;
 	}
 
-	$comments_disabled = wp_control_deck_comments_are_disabled();
-	$deleted_count     = isset( $_GET['wp_control_deck_deleted_comments'] ) ? absint( $_GET['wp_control_deck_deleted_comments'] ) : null;
-	$delete_confirm    = __( 'Are you sure you want to permanently delete all existing comments? This cannot be undone.', 'wp-control-deck' );
+	$comments_disabled    = wp_control_deck_comments_are_disabled();
+	$gutenberg_disabled   = wp_control_deck_gutenberg_is_disabled();
+	$gutenberg_exclusions = wp_control_deck_get_gutenberg_exclusions();
+	$post_types           = wp_control_deck_get_editor_post_types();
+	$deleted_count        = isset( $_GET['wp_control_deck_deleted_comments'] ) ? absint( $_GET['wp_control_deck_deleted_comments'] ) : null;
+	$delete_confirm       = __( 'Are you sure you want to permanently delete all existing comments? This cannot be undone.', 'wp-control-deck' );
 	?>
 	<div class="wrap wp-control-deck-page">
 		<div class="wp-control-deck-header">
@@ -109,18 +138,64 @@ function wp_control_deck_render_admin_page() {
 		<?php endif; ?>
 
 		<div class="wp-control-deck-grid">
-			<section class="wp-control-deck-card">
-				<div class="wp-control-deck-card-header">
-					<h2><?php esc_html_e( 'Comment Controls', 'wp-control-deck' ); ?></h2>
-				</div>
-				<form method="post" action="options.php">
-					<?php settings_fields( 'wp_control_deck_settings' ); ?>
+			<form class="wp-control-deck-settings-form" method="post" action="options.php">
+				<?php settings_fields( 'wp_control_deck_settings' ); ?>
+				<section class="wp-control-deck-card">
+					<div class="wp-control-deck-card-header">
+						<h2><?php esc_html_e( 'Editor Controls', 'wp-control-deck' ); ?></h2>
+					</div>
+					<div class="wp-control-deck-setting-row">
+						<div>
+							<h3><?php esc_html_e( 'Disable Gutenberg', 'wp-control-deck' ); ?></h3>
+							<p><?php esc_html_e( 'Switches WordPress back to the classic editor for all post types unless excluded below.', 'wp-control-deck' ); ?></p>
+						</div>
+						<label class="wp-control-deck-switch">
+							<input type="hidden" name="<?php echo esc_attr( WP_CONTROL_DECK_DISABLE_GUTENBERG_OPTION ); ?>" value="0" />
+							<input
+								type="checkbox"
+								name="<?php echo esc_attr( WP_CONTROL_DECK_DISABLE_GUTENBERG_OPTION ); ?>"
+								value="1"
+								data-wp-control-deck-toggle="gutenberg-exclusions"
+								<?php checked( $gutenberg_disabled ); ?>
+							/>
+							<span class="wp-control-deck-slider" aria-hidden="true"></span>
+						</label>
+					</div>
+					<div
+						class="wp-control-deck-exclusions <?php echo esc_attr( $gutenberg_disabled ? 'is-visible' : '' ); ?>"
+						data-wp-control-deck-panel="gutenberg-exclusions"
+					>
+						<h3><?php esc_html_e( 'Exclude Post Types', 'wp-control-deck' ); ?></h3>
+						<p><?php esc_html_e( 'Selected post types will keep Gutenberg enabled.', 'wp-control-deck' ); ?></p>
+						<input type="hidden" name="<?php echo esc_attr( WP_CONTROL_DECK_GUTENBERG_EXCLUSIONS_OPTION ); ?>[]" value="" />
+						<div class="wp-control-deck-checkbox-grid">
+							<?php foreach ( $post_types as $post_type ) : ?>
+								<label class="wp-control-deck-checkbox">
+									<input
+										type="checkbox"
+										name="<?php echo esc_attr( WP_CONTROL_DECK_GUTENBERG_EXCLUSIONS_OPTION ); ?>[]"
+										value="<?php echo esc_attr( $post_type->name ); ?>"
+										<?php checked( in_array( $post_type->name, $gutenberg_exclusions, true ) ); ?>
+									/>
+									<span><?php echo esc_html( $post_type->labels->singular_name ); ?></span>
+								</label>
+							<?php endforeach; ?>
+						</div>
+					</div>
+					<?php submit_button( __( 'Save Settings', 'wp-control-deck' ), 'primary wp-control-deck-primary-button' ); ?>
+				</section>
+
+				<section class="wp-control-deck-card">
+					<div class="wp-control-deck-card-header">
+						<h2><?php esc_html_e( 'Comment Controls', 'wp-control-deck' ); ?></h2>
+					</div>
 					<div class="wp-control-deck-setting-row">
 						<div>
 							<h3><?php esc_html_e( 'Disable Comments Globally', 'wp-control-deck' ); ?></h3>
 							<p><?php esc_html_e( 'Removes comment support, closes comments and pings, and hides WordPress comment screens while enabled.', 'wp-control-deck' ); ?></p>
 						</div>
 						<label class="wp-control-deck-switch">
+							<input type="hidden" name="<?php echo esc_attr( WP_CONTROL_DECK_DISABLE_COMMENTS_OPTION ); ?>" value="0" />
 							<input
 								type="checkbox"
 								name="<?php echo esc_attr( WP_CONTROL_DECK_DISABLE_COMMENTS_OPTION ); ?>"
@@ -131,8 +206,8 @@ function wp_control_deck_render_admin_page() {
 						</label>
 					</div>
 					<?php submit_button( __( 'Save Settings', 'wp-control-deck' ), 'primary wp-control-deck-primary-button' ); ?>
-				</form>
-			</section>
+				</section>
+			</form>
 
 			<section class="wp-control-deck-card wp-control-deck-danger-card">
 				<div class="wp-control-deck-card-header">
@@ -187,6 +262,11 @@ function wp_control_deck_render_admin_page() {
 			grid-template-columns: minmax(0, 1fr);
 		}
 
+		.wp-control-deck-settings-form {
+			display: grid;
+			gap: 16px;
+		}
+
 		.wp-control-deck-card {
 			background: #fff;
 			border: 1px solid #dcdcde;
@@ -235,6 +315,44 @@ function wp_control_deck_render_admin_page() {
 		.wp-control-deck-card .submit {
 			margin: 20px 0 0;
 			padding: 0;
+		}
+
+		.wp-control-deck-exclusions {
+			background: #f6f7f7;
+			border: 1px solid #e5e5e5;
+			border-radius: 8px;
+			display: none;
+			margin-top: 18px;
+			padding: 16px;
+		}
+
+		.wp-control-deck-exclusions.is-visible {
+			display: block;
+		}
+
+		.wp-control-deck-checkbox-grid {
+			display: grid;
+			gap: 10px;
+			grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+			margin-top: 14px;
+		}
+
+		.wp-control-deck-checkbox {
+			align-items: center;
+			background: #fff;
+			border: 1px solid #dcdcde;
+			border-radius: 6px;
+			display: flex;
+			gap: 8px;
+			min-height: 38px;
+			padding: 8px 10px;
+		}
+
+		.wp-control-deck-checkbox span {
+			color: #1d2327;
+			font-size: 13px;
+			font-weight: 500;
+			line-height: 1.3;
 		}
 
 		.wp-control-deck-primary-button,
@@ -312,7 +430,63 @@ function wp_control_deck_render_admin_page() {
 			}
 		}
 	</style>
+	<script>
+		document.addEventListener('DOMContentLoaded', function () {
+			var toggle = document.querySelector('[data-wp-control-deck-toggle="gutenberg-exclusions"]');
+			var panel = document.querySelector('[data-wp-control-deck-panel="gutenberg-exclusions"]');
+
+			if (!toggle || !panel) {
+				return;
+			}
+
+			function updatePanel() {
+				panel.classList.toggle('is-visible', toggle.checked);
+			}
+
+			toggle.addEventListener('change', updatePanel);
+			updatePanel();
+		});
+	</script>
 	<?php
+}
+
+/**
+ * Sanitizes Gutenberg post type exclusions.
+ *
+ * @param array|string $post_types Selected post type names.
+ * @return array
+ */
+function wp_control_deck_sanitize_post_type_exclusions( $post_types ) {
+	if ( ! is_array( $post_types ) ) {
+		$post_types = array( $post_types );
+	}
+
+	$allowed_post_types = wp_list_pluck( wp_control_deck_get_editor_post_types(), 'name' );
+	$post_types         = array_map( 'sanitize_key', $post_types );
+	$post_types         = array_filter( $post_types );
+
+	return array_values( array_intersect( $post_types, $allowed_post_types ) );
+}
+
+/**
+ * Gets post types that can reasonably use an editor screen.
+ *
+ * @return WP_Post_Type[]
+ */
+function wp_control_deck_get_editor_post_types() {
+	$post_types = get_post_types(
+		array(
+			'show_ui' => true,
+		),
+		'objects'
+	);
+
+	return array_filter(
+		$post_types,
+		function ( $post_type ) {
+			return post_type_supports( $post_type->name, 'editor' );
+		}
+	);
 }
 
 /**
@@ -322,6 +496,68 @@ function wp_control_deck_render_admin_page() {
  */
 function wp_control_deck_comments_are_disabled() {
 	return (bool) get_option( WP_CONTROL_DECK_DISABLE_COMMENTS_OPTION, false );
+}
+
+/**
+ * Checks whether Gutenberg is disabled.
+ *
+ * @return bool
+ */
+function wp_control_deck_gutenberg_is_disabled() {
+	return (bool) get_option( WP_CONTROL_DECK_DISABLE_GUTENBERG_OPTION, false );
+}
+
+/**
+ * Gets post types that should keep Gutenberg enabled.
+ *
+ * @return array
+ */
+function wp_control_deck_get_gutenberg_exclusions() {
+	$exclusions = get_option( WP_CONTROL_DECK_GUTENBERG_EXCLUSIONS_OPTION, array() );
+
+	if ( ! is_array( $exclusions ) ) {
+		return array();
+	}
+
+	return array_values( array_filter( array_map( 'sanitize_key', $exclusions ) ) );
+}
+
+/**
+ * Switches WordPress to the classic editor unless the post type is excluded.
+ */
+function wp_control_deck_disable_gutenberg() {
+	add_filter( 'use_block_editor_for_post_type', 'wp_control_deck_filter_block_editor_for_post_type', 20, 2 );
+	add_filter( 'use_block_editor_for_post', 'wp_control_deck_filter_block_editor_for_post', 20, 2 );
+}
+
+/**
+ * Disables the block editor for non-excluded post types.
+ *
+ * @param bool   $use_block_editor Whether the block editor should be used.
+ * @param string $post_type Post type name.
+ * @return bool
+ */
+function wp_control_deck_filter_block_editor_for_post_type( $use_block_editor, $post_type ) {
+	if ( in_array( $post_type, wp_control_deck_get_gutenberg_exclusions(), true ) ) {
+		return $use_block_editor;
+	}
+
+	return false;
+}
+
+/**
+ * Disables the block editor for non-excluded posts.
+ *
+ * @param bool    $use_block_editor Whether the block editor should be used.
+ * @param WP_Post $post Post object.
+ * @return bool
+ */
+function wp_control_deck_filter_block_editor_for_post( $use_block_editor, $post ) {
+	if ( $post instanceof WP_Post && in_array( $post->post_type, wp_control_deck_get_gutenberg_exclusions(), true ) ) {
+		return $use_block_editor;
+	}
+
+	return false;
 }
 
 /**
