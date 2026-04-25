@@ -18,6 +18,7 @@ define( 'WP_CONTROL_DECK_URL', plugin_dir_url( WP_CONTROL_DECK_FILE ) );
 define( 'WP_CONTROL_DECK_DISABLE_COMMENTS_OPTION', 'wp_control_deck_disable_comments_globally' );
 define( 'WP_CONTROL_DECK_DISABLE_GUTENBERG_OPTION', 'wp_control_deck_disable_gutenberg' );
 define( 'WP_CONTROL_DECK_GUTENBERG_EXCLUSIONS_OPTION', 'wp_control_deck_gutenberg_excluded_post_types' );
+define( 'WP_CONTROL_DECK_ADMIN_BAR_HOTLINKS_OPTION', 'wp_control_deck_admin_bar_hotlinks' );
 
 /**
  * Runs when the plugin is activated.
@@ -42,6 +43,7 @@ function wp_control_deck_bootstrap() {
 	add_action( 'admin_menu', 'wp_control_deck_add_admin_menu' );
 	add_action( 'admin_init', 'wp_control_deck_register_settings' );
 	add_action( 'admin_post_wp_control_deck_delete_comments', 'wp_control_deck_handle_delete_comments' );
+	add_action( 'admin_bar_menu', 'wp_control_deck_add_admin_bar_hotlinks', 100 );
 
 	if ( wp_control_deck_comments_are_disabled() ) {
 		wp_control_deck_disable_comments();
@@ -101,6 +103,16 @@ function wp_control_deck_register_settings() {
 			'default'           => array(),
 		)
 	);
+
+	register_setting(
+		'wp_control_deck_settings',
+		WP_CONTROL_DECK_ADMIN_BAR_HOTLINKS_OPTION,
+		array(
+			'type'              => 'array',
+			'sanitize_callback' => 'wp_control_deck_sanitize_admin_bar_hotlinks',
+			'default'           => array(),
+		)
+	);
 }
 
 /**
@@ -114,6 +126,7 @@ function wp_control_deck_render_admin_page() {
 	$comments_disabled    = wp_control_deck_comments_are_disabled();
 	$gutenberg_disabled   = wp_control_deck_gutenberg_is_disabled();
 	$gutenberg_exclusions = wp_control_deck_get_gutenberg_exclusions();
+	$admin_bar_hotlinks   = wp_control_deck_get_admin_bar_hotlinks();
 	$post_types           = wp_control_deck_get_editor_post_types();
 	$deleted_count        = isset( $_GET['wp_control_deck_deleted_comments'] ) ? absint( $_GET['wp_control_deck_deleted_comments'] ) : null;
 	$delete_confirm       = __( 'Are you sure you want to permanently delete all existing comments? This cannot be undone.', 'wp-control-deck' );
@@ -204,6 +217,44 @@ function wp_control_deck_render_admin_page() {
 							/>
 							<span class="wp-control-deck-slider" aria-hidden="true"></span>
 						</label>
+					</div>
+					<?php submit_button( __( 'Save Settings', 'wp-control-deck' ), 'primary wp-control-deck-primary-button' ); ?>
+				</section>
+
+				<section class="wp-control-deck-card">
+					<div class="wp-control-deck-card-header">
+						<h2><?php esc_html_e( 'Admin Bar Hotlinks', 'wp-control-deck' ); ?></h2>
+					</div>
+					<p><?php esc_html_e( 'Add up to three custom links for quick access from the WordPress admin bar.', 'wp-control-deck' ); ?></p>
+					<div class="wp-control-deck-hotlinks">
+						<?php for ( $index = 0; $index < 3; $index++ ) : ?>
+							<?php
+							$hotlink = isset( $admin_bar_hotlinks[ $index ] ) ? $admin_bar_hotlinks[ $index ] : array(
+								'url'  => '',
+								'text' => '',
+							);
+							?>
+							<div class="wp-control-deck-hotlink-row">
+								<label>
+									<span><?php esc_html_e( 'Link', 'wp-control-deck' ); ?></span>
+									<input
+										type="url"
+										name="<?php echo esc_attr( WP_CONTROL_DECK_ADMIN_BAR_HOTLINKS_OPTION ); ?>[<?php echo esc_attr( $index ); ?>][url]"
+										value="<?php echo esc_url( $hotlink['url'] ); ?>"
+										placeholder="<?php echo esc_attr( home_url( '/' ) ); ?>"
+									/>
+								</label>
+								<label>
+									<span><?php esc_html_e( 'Link Text', 'wp-control-deck' ); ?></span>
+									<input
+										type="text"
+										name="<?php echo esc_attr( WP_CONTROL_DECK_ADMIN_BAR_HOTLINKS_OPTION ); ?>[<?php echo esc_attr( $index ); ?>][text]"
+										value="<?php echo esc_attr( $hotlink['text'] ); ?>"
+										placeholder="<?php esc_attr_e( 'Dashboard', 'wp-control-deck' ); ?>"
+									/>
+								</label>
+							</div>
+						<?php endfor; ?>
 					</div>
 					<?php submit_button( __( 'Save Settings', 'wp-control-deck' ), 'primary wp-control-deck-primary-button' ); ?>
 				</section>
@@ -355,6 +406,41 @@ function wp_control_deck_render_admin_page() {
 			line-height: 1.3;
 		}
 
+		.wp-control-deck-hotlinks {
+			display: grid;
+			gap: 14px;
+			margin-top: 16px;
+		}
+
+		.wp-control-deck-hotlink-row {
+			background: #f6f7f7;
+			border: 1px solid #e5e5e5;
+			border-radius: 8px;
+			display: grid;
+			gap: 12px;
+			grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+			padding: 14px;
+		}
+
+		.wp-control-deck-hotlink-row label {
+			display: grid;
+			gap: 6px;
+		}
+
+		.wp-control-deck-hotlink-row span {
+			color: #1d2327;
+			font-size: 13px;
+			font-weight: 600;
+			line-height: 1.3;
+		}
+
+		.wp-control-deck-hotlink-row input {
+			border: 1px solid #8c8f94;
+			border-radius: 6px;
+			min-height: 36px;
+			width: 100%;
+		}
+
 		.wp-control-deck-primary-button,
 		.wp-control-deck-delete-button {
 			border-radius: 6px !important;
@@ -428,6 +514,10 @@ function wp_control_deck_render_admin_page() {
 				flex-direction: column;
 				gap: 14px;
 			}
+
+			.wp-control-deck-hotlink-row {
+				grid-template-columns: minmax(0, 1fr);
+			}
 		}
 	</style>
 	<script>
@@ -466,6 +556,40 @@ function wp_control_deck_sanitize_post_type_exclusions( $post_types ) {
 	$post_types         = array_filter( $post_types );
 
 	return array_values( array_intersect( $post_types, $allowed_post_types ) );
+}
+
+/**
+ * Sanitizes admin bar hotlinks.
+ *
+ * @param array $hotlinks Submitted hotlink rows.
+ * @return array
+ */
+function wp_control_deck_sanitize_admin_bar_hotlinks( $hotlinks ) {
+	if ( ! is_array( $hotlinks ) ) {
+		return array();
+	}
+
+	$sanitized = array();
+
+	foreach ( array_slice( $hotlinks, 0, 3 ) as $hotlink ) {
+		if ( ! is_array( $hotlink ) ) {
+			continue;
+		}
+
+		$url  = isset( $hotlink['url'] ) ? esc_url_raw( $hotlink['url'] ) : '';
+		$text = isset( $hotlink['text'] ) ? sanitize_text_field( $hotlink['text'] ) : '';
+
+		if ( '' === $url || '' === $text ) {
+			continue;
+		}
+
+		$sanitized[] = array(
+			'url'  => $url,
+			'text' => $text,
+		);
+	}
+
+	return $sanitized;
 }
 
 /**
@@ -520,6 +644,41 @@ function wp_control_deck_get_gutenberg_exclusions() {
 	}
 
 	return array_values( array_filter( array_map( 'sanitize_key', $exclusions ) ) );
+}
+
+/**
+ * Gets configured admin bar hotlinks.
+ *
+ * @return array
+ */
+function wp_control_deck_get_admin_bar_hotlinks() {
+	$hotlinks = get_option( WP_CONTROL_DECK_ADMIN_BAR_HOTLINKS_OPTION, array() );
+
+	return wp_control_deck_sanitize_admin_bar_hotlinks( $hotlinks );
+}
+
+/**
+ * Adds configured hotlinks to the WordPress admin bar.
+ *
+ * @param WP_Admin_Bar $wp_admin_bar Admin bar instance.
+ */
+function wp_control_deck_add_admin_bar_hotlinks( $wp_admin_bar ) {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		return;
+	}
+
+	foreach ( wp_control_deck_get_admin_bar_hotlinks() as $index => $hotlink ) {
+		$wp_admin_bar->add_node(
+			array(
+				'id'    => 'wp-control-deck-hotlink-' . ( $index + 1 ),
+				'title' => esc_html( $hotlink['text'] ),
+				'href'  => esc_url( $hotlink['url'] ),
+				'meta'  => array(
+					'title' => esc_attr( $hotlink['text'] ),
+				),
+			)
+		);
+	}
 }
 
 /**

@@ -14,7 +14,7 @@ A lightweight starter plugin for WP Control Deck.
 
 WP Control Deck is a custom WordPress plugin by Vincent Casilla.
 
-This release adds a WP Control Deck admin menu with controls to disable Gutenberg, disable WordPress comments globally, and permanently delete existing comments.
+This release adds a WP Control Deck admin menu with controls to disable Gutenberg, disable WordPress comments globally, add admin bar hotlinks, and permanently delete existing comments.
 
 == Installation ==
 
@@ -27,4 +27,5 @@ This release adds a WP Control Deck admin menu with controls to disable Gutenber
 * Added the WP Control Deck admin menu.
 * Added a Disable Gutenberg switch with post type exclusions.
 * Added a Disable Comments Globally switch.
+* Added Admin Bar Hotlinks for up to three custom admin bar links.
 * Added a Delete Existing Comments action.
