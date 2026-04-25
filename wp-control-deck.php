@@ -19,6 +19,7 @@ define( 'WP_CONTROL_DECK_DISABLE_COMMENTS_OPTION', 'wp_control_deck_disable_comm
 define( 'WP_CONTROL_DECK_DISABLE_GUTENBERG_OPTION', 'wp_control_deck_disable_gutenberg' );
 define( 'WP_CONTROL_DECK_GUTENBERG_EXCLUSIONS_OPTION', 'wp_control_deck_gutenberg_excluded_post_types' );
 define( 'WP_CONTROL_DECK_ADMIN_BAR_HOTLINKS_OPTION', 'wp_control_deck_admin_bar_hotlinks' );
+define( 'WP_CONTROL_DECK_TOGGLE_PAGE_INFO_OPTION', 'wp_control_deck_toggle_page_info' );
 
 /**
  * Runs when the plugin is activated.
@@ -51,6 +52,10 @@ function wp_control_deck_bootstrap() {
 
 	if ( wp_control_deck_gutenberg_is_disabled() ) {
 		wp_control_deck_disable_gutenberg();
+	}
+
+	if ( wp_control_deck_page_info_is_enabled() ) {
+		wp_control_deck_enable_page_info();
 	}
 }
 add_action( 'plugins_loaded', 'wp_control_deck_bootstrap' );
@@ -113,6 +118,16 @@ function wp_control_deck_register_settings() {
 			'default'           => array(),
 		)
 	);
+
+	register_setting(
+		'wp_control_deck_settings',
+		WP_CONTROL_DECK_TOGGLE_PAGE_INFO_OPTION,
+		array(
+			'type'              => 'boolean',
+			'sanitize_callback' => 'wp_validate_boolean',
+			'default'           => false,
+		)
+	);
 }
 
 /**
@@ -127,6 +142,7 @@ function wp_control_deck_render_admin_page() {
 	$gutenberg_disabled   = wp_control_deck_gutenberg_is_disabled();
 	$gutenberg_exclusions = wp_control_deck_get_gutenberg_exclusions();
 	$admin_bar_hotlinks   = wp_control_deck_get_admin_bar_hotlinks();
+	$page_info_enabled    = wp_control_deck_page_info_is_enabled();
 	$post_types           = wp_control_deck_get_editor_post_types();
 	$deleted_count        = isset( $_GET['wp_control_deck_deleted_comments'] ) ? absint( $_GET['wp_control_deck_deleted_comments'] ) : null;
 	$delete_confirm       = __( 'Are you sure you want to permanently delete all existing comments? This cannot be undone.', 'wp-control-deck' );
@@ -258,6 +274,30 @@ function wp_control_deck_render_admin_page() {
 					</div>
 					<?php submit_button( __( 'Save Settings', 'wp-control-deck' ), 'primary wp-control-deck-primary-button' ); ?>
 				</section>
+
+				<section class="wp-control-deck-card">
+					<div class="wp-control-deck-card-header">
+						<h2><?php esc_html_e( 'Development Tools', 'wp-control-deck' ); ?></h2>
+					</div>
+					<div class="wp-control-deck-setting-row">
+						<div>
+							<h3><?php esc_html_e( 'Toggle Page Info', 'wp-control-deck' ); ?></h3>
+							<p><?php esc_html_e( 'Shows a frontend diagnostics box with load speed, page size, image totals, meta title, and meta description.', 'wp-control-deck' ); ?></p>
+							<p class="wp-control-deck-warning"><?php esc_html_e( 'Only use on a development environment.', 'wp-control-deck' ); ?></p>
+						</div>
+						<label class="wp-control-deck-switch">
+							<input type="hidden" name="<?php echo esc_attr( WP_CONTROL_DECK_TOGGLE_PAGE_INFO_OPTION ); ?>" value="0" />
+							<input
+								type="checkbox"
+								name="<?php echo esc_attr( WP_CONTROL_DECK_TOGGLE_PAGE_INFO_OPTION ); ?>"
+								value="1"
+								<?php checked( $page_info_enabled ); ?>
+							/>
+							<span class="wp-control-deck-slider" aria-hidden="true"></span>
+						</label>
+					</div>
+					<?php submit_button( __( 'Save Settings', 'wp-control-deck' ), 'primary wp-control-deck-primary-button' ); ?>
+				</section>
 			</form>
 
 			<section class="wp-control-deck-card wp-control-deck-danger-card">
@@ -354,6 +394,11 @@ function wp_control_deck_render_admin_page() {
 			line-height: 1.55;
 			margin: 8px 0 0;
 			max-width: 620px;
+		}
+
+		.wp-control-deck-card .wp-control-deck-warning {
+			color: #b32d2e;
+			font-weight: 600;
 		}
 
 		.wp-control-deck-setting-row {
@@ -632,6 +677,15 @@ function wp_control_deck_gutenberg_is_disabled() {
 }
 
 /**
+ * Checks whether frontend page info diagnostics are enabled.
+ *
+ * @return bool
+ */
+function wp_control_deck_page_info_is_enabled() {
+	return (bool) get_option( WP_CONTROL_DECK_TOGGLE_PAGE_INFO_OPTION, false );
+}
+
+/**
  * Gets post types that should keep Gutenberg enabled.
  *
  * @return array
@@ -679,6 +733,345 @@ function wp_control_deck_add_admin_bar_hotlinks( $wp_admin_bar ) {
 			)
 		);
 	}
+}
+
+/**
+ * Enables frontend page diagnostics for administrators.
+ */
+function wp_control_deck_enable_page_info() {
+	if ( is_admin() ) {
+		return;
+	}
+
+	add_action( 'wp_footer', 'wp_control_deck_render_page_info', 999 );
+}
+
+/**
+ * Renders the frontend page diagnostics box.
+ */
+function wp_control_deck_render_page_info() {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		return;
+	}
+	?>
+	<style>
+		#wp-control-deck-page-info {
+			background: #111827;
+			border: 1px solid rgba(255, 255, 255, .14);
+			border-radius: 8px;
+			bottom: 16px;
+			box-shadow: 0 12px 30px rgba(0, 0, 0, .24);
+			color: #f9fafb;
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			font-size: 12px;
+			left: 16px;
+			line-height: 1.4;
+			max-width: min(320px, calc(100vw - 32px));
+			padding: 12px 14px;
+			position: fixed;
+			text-align: left;
+			transition: opacity .16s ease;
+			z-index: 999999;
+		}
+
+		#wp-control-deck-page-info.is-scrolling {
+			opacity: .4;
+		}
+
+		#wp-control-deck-page-info.is-scrolling:hover,
+		#wp-control-deck-page-info:hover {
+			opacity: 1;
+		}
+
+		#wp-control-deck-page-info * {
+			box-sizing: border-box;
+		}
+
+		#wp-control-deck-page-info strong {
+			color: #fff;
+			display: block;
+			font-size: 13px;
+			margin-bottom: 8px;
+		}
+
+		#wp-control-deck-page-info dl {
+			display: grid;
+			gap: 6px 10px;
+			grid-template-columns: max-content minmax(0, 1fr);
+			margin: 0;
+		}
+
+		#wp-control-deck-page-info dt {
+			color: #cbd5e1;
+			font-weight: 600;
+			margin: 0;
+		}
+
+		#wp-control-deck-page-info dd {
+			color: #f9fafb;
+			margin: 0;
+			min-width: 0;
+			overflow-wrap: anywhere;
+		}
+
+		#wp-control-deck-page-info dd.is-good {
+			color: #86efac;
+		}
+
+		#wp-control-deck-page-info dd.is-medium {
+			color: #fdba74;
+		}
+
+		#wp-control-deck-page-info dd.is-high {
+			color: #fca5a5;
+		}
+
+		#wp-control-deck-page-info dd.is-unavailable {
+			color: #cbd5e1;
+		}
+
+		#wp-control-deck-page-info .wp-control-deck-page-info-disclaimer {
+			border-top: 1px solid rgba(255, 255, 255, .12);
+			color: #cbd5e1;
+			font-size: 10px;
+			line-height: 1.35;
+			margin: 10px 0 0;
+			padding-top: 8px;
+		}
+	</style>
+	<script>
+		(function () {
+			var unavailable = <?php echo wp_json_encode( __( 'Unavailable', 'wp-control-deck' ) ); ?>;
+
+			function getEntrySize(entry) {
+				return entry.transferSize || entry.encodedBodySize || entry.decodedBodySize || 0;
+			}
+
+			function getLoadSpeed(navigationEntry, timing) {
+				if (navigationEntry && navigationEntry.duration) {
+					return Math.round(navigationEntry.duration);
+				}
+
+				if (timing && timing.loadEventEnd && timing.navigationStart) {
+					return Math.max(0, timing.loadEventEnd - timing.navigationStart);
+				}
+
+				if (timing && timing.navigationStart) {
+					return Math.max(0, Math.round(Date.now() - timing.navigationStart));
+				}
+
+				return null;
+			}
+
+			function formatBytes(bytes) {
+				if (!bytes) {
+					return unavailable;
+				}
+
+				if (bytes < 1024) {
+					return bytes + ' B';
+				}
+
+				if (bytes < 1048576) {
+					return (bytes / 1024).toFixed(1) + ' KB';
+				}
+
+				return (bytes / 1048576).toFixed(2) + ' MB';
+			}
+
+			function getLoadSpeedStatus(milliseconds) {
+				if (null === milliseconds) {
+					return 'is-unavailable';
+				}
+
+				if (milliseconds <= 1500) {
+					return 'is-good';
+				}
+
+				if (milliseconds <= 3000) {
+					return 'is-medium';
+				}
+
+				return 'is-high';
+			}
+
+			function getPageSizeStatus(bytes) {
+				if (!bytes) {
+					return 'is-unavailable';
+				}
+
+				if (bytes <= 1048576) {
+					return 'is-good';
+				}
+
+				if (bytes <= 3145728) {
+					return 'is-medium';
+				}
+
+				return 'is-high';
+			}
+
+			function getImageCountStatus(count) {
+				if (count <= 10) {
+					return 'is-good';
+				}
+
+				if (count <= 25) {
+					return 'is-medium';
+				}
+
+				return 'is-high';
+			}
+
+			function getImageSizeStatus(bytes) {
+				if (!bytes) {
+					return 'is-unavailable';
+				}
+
+				if (bytes <= 512000) {
+					return 'is-good';
+				}
+
+				if (bytes <= 1572864) {
+					return 'is-medium';
+				}
+
+				return 'is-high';
+			}
+
+			function getMetaTitleStatus(value) {
+				var length = value ? value.length : 0;
+
+				if (length >= 30 && length <= 60) {
+					return 'is-good';
+				}
+
+				if ((length > 0 && length < 30) || (length > 60 && length <= 70)) {
+					return 'is-medium';
+				}
+
+				return 'is-high';
+			}
+
+			function getMetaDescriptionStatus(value) {
+				var length = value ? value.length : 0;
+
+				if (length >= 120 && length <= 160) {
+					return 'is-good';
+				}
+
+				if ((length > 0 && length < 120) || (length > 160 && length <= 180)) {
+					return 'is-medium';
+				}
+
+				return 'is-high';
+			}
+
+			function addRow(list, label, value, status) {
+				var term = document.createElement('dt');
+				var description = document.createElement('dd');
+
+				term.textContent = label;
+				description.textContent = value || unavailable;
+				description.className = status || 'is-unavailable';
+				list.appendChild(term);
+				list.appendChild(description);
+			}
+
+			function renderPageInfo() {
+				var box = document.createElement('aside');
+				var title = document.createElement('strong');
+				var list = document.createElement('dl');
+				var disclaimer = document.createElement('p');
+				var metaDescription = document.querySelector('meta[name="description"]');
+				var resources = window.performance && typeof window.performance.getEntriesByType === 'function'
+					? window.performance.getEntriesByType('resource')
+					: [];
+				var navigationEntry = window.performance && typeof window.performance.getEntriesByType === 'function'
+					? window.performance.getEntriesByType('navigation')[0]
+					: null;
+				var timing = window.performance && window.performance.timing ? window.performance.timing : null;
+				var pageSize = 0;
+				var imageSize = 0;
+				var hasPageSize = false;
+				var hasImageSize = false;
+				var loadSpeed = getLoadSpeed(navigationEntry, timing);
+				var metaDescriptionValue = metaDescription ? metaDescription.getAttribute('content') : '';
+				var metaTitle = document.title || '';
+
+				box.id = 'wp-control-deck-page-info';
+				box.setAttribute('aria-label', <?php echo wp_json_encode( __( 'WP Control Deck Page Info', 'wp-control-deck' ) ); ?>);
+				title.textContent = <?php echo wp_json_encode( __( 'Page Info', 'wp-control-deck' ) ); ?>;
+				disclaimer.className = 'wp-control-deck-page-info-disclaimer';
+				disclaimer.textContent = <?php echo wp_json_encode( __( 'These values are estimations only. Use Google Lighthouse or PageSpeed Insights for an accurate reading.', 'wp-control-deck' ) ); ?>;
+
+				resources.forEach(function (entry) {
+					var size = getEntrySize(entry);
+
+					if (size) {
+						pageSize += size;
+						hasPageSize = true;
+					}
+
+					if ('img' === entry.initiatorType) {
+						if (size) {
+							imageSize += size;
+							hasImageSize = true;
+						}
+					}
+				});
+
+				if (navigationEntry) {
+					var documentSize = getEntrySize(navigationEntry);
+
+					if (documentSize) {
+						pageSize += documentSize;
+						hasPageSize = true;
+					}
+				}
+
+				addRow(list, <?php echo wp_json_encode( __( 'Approx. Load Speed', 'wp-control-deck' ) ); ?>, null === loadSpeed ? unavailable : loadSpeed + ' ms', getLoadSpeedStatus(loadSpeed));
+				addRow(list, <?php echo wp_json_encode( __( 'Page Size', 'wp-control-deck' ) ); ?>, hasPageSize ? formatBytes(pageSize) : unavailable, hasPageSize ? getPageSizeStatus(pageSize) : 'is-unavailable');
+				addRow(list, <?php echo wp_json_encode( __( 'Images', 'wp-control-deck' ) ); ?>, String(document.images.length), getImageCountStatus(document.images.length));
+				addRow(list, <?php echo wp_json_encode( __( 'Image Size', 'wp-control-deck' ) ); ?>, hasImageSize ? formatBytes(imageSize) : unavailable, hasImageSize ? getImageSizeStatus(imageSize) : 'is-unavailable');
+				addRow(list, <?php echo wp_json_encode( __( 'Meta Title', 'wp-control-deck' ) ); ?>, metaTitle || unavailable, getMetaTitleStatus(metaTitle));
+				addRow(list, <?php echo wp_json_encode( __( 'Meta Description', 'wp-control-deck' ) ); ?>, metaDescriptionValue || unavailable, getMetaDescriptionStatus(metaDescriptionValue));
+
+				box.appendChild(title);
+				box.appendChild(list);
+				box.appendChild(disclaimer);
+				document.body.appendChild(box);
+				enableScrollOpacity(box);
+			}
+
+			function enableScrollOpacity(box) {
+				var scrollTimeout;
+
+				window.addEventListener(
+					'scroll',
+					function () {
+						box.classList.add('is-scrolling');
+						window.clearTimeout(scrollTimeout);
+						scrollTimeout = window.setTimeout(function () {
+							box.classList.remove('is-scrolling');
+						}, 700);
+					},
+					{ passive: true }
+				);
+			}
+
+			function schedulePageInfo() {
+				window.setTimeout(renderPageInfo, 0);
+			}
+
+			if ('complete' === document.readyState) {
+				schedulePageInfo();
+			} else {
+				window.addEventListener('load', schedulePageInfo);
+			}
+		})();
+	</script>
+	<?php
 }
 
 /**
