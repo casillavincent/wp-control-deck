@@ -770,17 +770,13 @@ function wp_control_deck_render_page_info() {
 			padding: 12px 14px;
 			position: fixed;
 			text-align: left;
-			transition: opacity .16s ease;
+			transition: opacity .18s ease, transform .18s ease;
 			z-index: 999999;
 		}
 
 		#wp-control-deck-page-info.is-scrolling {
 			opacity: .4;
-		}
-
-		#wp-control-deck-page-info.is-scrolling:hover,
-		#wp-control-deck-page-info:hover {
-			opacity: 1;
+			transform: translateX(calc(-100% - 24px));
 		}
 
 		#wp-control-deck-page-info * {
