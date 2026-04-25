@@ -20,6 +20,9 @@ define( 'WP_CONTROL_DECK_DISABLE_GUTENBERG_OPTION', 'wp_control_deck_disable_gut
 define( 'WP_CONTROL_DECK_GUTENBERG_EXCLUSIONS_OPTION', 'wp_control_deck_gutenberg_excluded_post_types' );
 define( 'WP_CONTROL_DECK_ADMIN_BAR_HOTLINKS_OPTION', 'wp_control_deck_admin_bar_hotlinks' );
 define( 'WP_CONTROL_DECK_TOGGLE_PAGE_INFO_OPTION', 'wp_control_deck_toggle_page_info' );
+define( 'WP_CONTROL_DECK_PAGE_INFO_STYLE_OPTION', 'wp_control_deck_page_info_style' );
+define( 'WP_CONTROL_DECK_SEO_CONSOLE_OPTION', 'wp_control_deck_seo_console_enabled' );
+define( 'WP_CONTROL_DECK_SEO_CONSOLE_FALLBACKS_OPTION', 'wp_control_deck_seo_console_fallbacks' );
 
 /**
  * Runs when the plugin is activated.
@@ -45,6 +48,7 @@ function wp_control_deck_bootstrap() {
 	add_action( 'admin_init', 'wp_control_deck_register_settings' );
 	add_action( 'admin_post_wp_control_deck_delete_comments', 'wp_control_deck_handle_delete_comments' );
 	add_action( 'admin_bar_menu', 'wp_control_deck_add_admin_bar_hotlinks', 100 );
+	add_action( 'admin_enqueue_scripts', 'wp_control_deck_enqueue_admin_assets' );
 
 	if ( wp_control_deck_comments_are_disabled() ) {
 		wp_control_deck_disable_comments();
@@ -56,6 +60,10 @@ function wp_control_deck_bootstrap() {
 
 	if ( wp_control_deck_page_info_is_enabled() ) {
 		wp_control_deck_enable_page_info();
+	}
+
+	if ( wp_control_deck_seo_console_is_enabled() ) {
+		wp_control_deck_enable_seo_console();
 	}
 }
 add_action( 'plugins_loaded', 'wp_control_deck_bootstrap' );
@@ -72,6 +80,32 @@ function wp_control_deck_add_admin_menu() {
 		'wp_control_deck_render_admin_page',
 		'dashicons-admin-generic',
 		65
+	);
+}
+
+/**
+ * Enqueues shared WP Control Deck admin assets.
+ *
+ * @param string $hook_suffix Current admin hook.
+ */
+function wp_control_deck_enqueue_admin_assets( $hook_suffix ) {
+	if ( 'toplevel_page_wp-control-deck' !== $hook_suffix ) {
+		return;
+	}
+
+	wp_enqueue_media();
+	wp_enqueue_style(
+		'wpseo-console-admin',
+		WP_CONTROL_DECK_URL . 'assets/wpseo-console-admin.css',
+		array(),
+		WP_CONTROL_DECK_VERSION
+	);
+	wp_enqueue_script(
+		'wpseo-console-admin',
+		WP_CONTROL_DECK_URL . 'assets/wpseo-console-admin.js',
+		array(),
+		WP_CONTROL_DECK_VERSION,
+		true
 	);
 }
 
@@ -128,6 +162,36 @@ function wp_control_deck_register_settings() {
 			'default'           => false,
 		)
 	);
+
+	register_setting(
+		'wp_control_deck_settings',
+		WP_CONTROL_DECK_PAGE_INFO_STYLE_OPTION,
+		array(
+			'type'              => 'string',
+			'sanitize_callback' => 'wp_control_deck_sanitize_page_info_style',
+			'default'           => 'default',
+		)
+	);
+
+	register_setting(
+		'wp_control_deck_settings',
+		WP_CONTROL_DECK_SEO_CONSOLE_OPTION,
+		array(
+			'type'              => 'boolean',
+			'sanitize_callback' => 'wp_validate_boolean',
+			'default'           => false,
+		)
+	);
+
+	register_setting(
+		'wp_control_deck_settings',
+		WP_CONTROL_DECK_SEO_CONSOLE_FALLBACKS_OPTION,
+		array(
+			'type'              => 'array',
+			'sanitize_callback' => 'wp_control_deck_sanitize_seo_console_fallbacks',
+			'default'           => array(),
+		)
+	);
 }
 
 /**
@@ -143,6 +207,9 @@ function wp_control_deck_render_admin_page() {
 	$gutenberg_exclusions = wp_control_deck_get_gutenberg_exclusions();
 	$admin_bar_hotlinks   = wp_control_deck_get_admin_bar_hotlinks();
 	$page_info_enabled    = wp_control_deck_page_info_is_enabled();
+	$page_info_style      = wp_control_deck_get_page_info_style();
+	$seo_console_enabled  = wp_control_deck_seo_console_is_enabled();
+	$seo_fallbacks        = wp_control_deck_get_seo_console_fallbacks();
 	$post_types           = wp_control_deck_get_editor_post_types();
 	$deleted_count        = isset( $_GET['wp_control_deck_deleted_comments'] ) ? absint( $_GET['wp_control_deck_deleted_comments'] ) : null;
 	$delete_confirm       = __( 'Are you sure you want to permanently delete all existing comments? This cannot be undone.', 'wp-control-deck' );
@@ -296,6 +363,113 @@ function wp_control_deck_render_admin_page() {
 							<span class="wp-control-deck-slider" aria-hidden="true"></span>
 						</label>
 					</div>
+					<div class="wp-control-deck-field-row">
+						<label for="wp-control-deck-page-info-style"><?php esc_html_e( 'Style', 'wp-control-deck' ); ?></label>
+						<select
+							id="wp-control-deck-page-info-style"
+							name="<?php echo esc_attr( WP_CONTROL_DECK_PAGE_INFO_STYLE_OPTION ); ?>"
+						>
+							<option value="default" <?php selected( $page_info_style, 'default' ); ?>><?php esc_html_e( 'Default', 'wp-control-deck' ); ?></option>
+							<option value="glass" <?php selected( $page_info_style, 'glass' ); ?>><?php esc_html_e( 'Glass', 'wp-control-deck' ); ?></option>
+						</select>
+					</div>
+					<?php submit_button( __( 'Save Settings', 'wp-control-deck' ), 'primary wp-control-deck-primary-button' ); ?>
+				</section>
+
+				<section class="wp-control-deck-card">
+					<div class="wp-control-deck-card-header">
+						<h2><?php esc_html_e( 'SEO Console', 'wp-control-deck' ); ?></h2>
+					</div>
+					<div class="wp-control-deck-setting-row">
+						<div>
+							<h3><?php esc_html_e( 'Enable WP SEO Console', 'wp-control-deck' ); ?></h3>
+							<p><?php esc_html_e( 'Adds lightweight SEO fields to posts and pages, then outputs document title, description, robots, canonical, Open Graph, and Twitter tags from saved post meta.', 'wp-control-deck' ); ?></p>
+						</div>
+						<label class="wp-control-deck-switch">
+							<input type="hidden" name="<?php echo esc_attr( WP_CONTROL_DECK_SEO_CONSOLE_OPTION ); ?>" value="0" />
+							<input
+								type="checkbox"
+								name="<?php echo esc_attr( WP_CONTROL_DECK_SEO_CONSOLE_OPTION ); ?>"
+								value="1"
+								<?php checked( $seo_console_enabled ); ?>
+							/>
+							<span class="wp-control-deck-slider" aria-hidden="true"></span>
+						</label>
+					</div>
+					<div class="wp-control-deck-fallback-fields">
+						<h3><?php esc_html_e( 'Global Fallback Meta', 'wp-control-deck' ); ?></h3>
+						<p><?php esc_html_e( 'Used only when an individual post or page has no SEO Console meta saved.', 'wp-control-deck' ); ?></p>
+						<div class="wp-control-deck-field-stack">
+							<label>
+								<span><?php esc_html_e( 'Fallback SEO Title', 'wp-control-deck' ); ?></span>
+								<input
+									type="text"
+									name="<?php echo esc_attr( WP_CONTROL_DECK_SEO_CONSOLE_FALLBACKS_OPTION ); ?>[_wpseo_console_title]"
+									value="<?php echo esc_attr( $seo_fallbacks['_wpseo_console_title'] ); ?>"
+								/>
+							</label>
+							<label>
+								<span><?php esc_html_e( 'Fallback Meta Description', 'wp-control-deck' ); ?></span>
+								<textarea
+									name="<?php echo esc_attr( WP_CONTROL_DECK_SEO_CONSOLE_FALLBACKS_OPTION ); ?>[_wpseo_console_description]"
+									rows="3"
+								><?php echo esc_textarea( $seo_fallbacks['_wpseo_console_description'] ); ?></textarea>
+							</label>
+							<label>
+								<span><?php esc_html_e( 'Fallback Robots Indexing', 'wp-control-deck' ); ?></span>
+								<select name="<?php echo esc_attr( WP_CONTROL_DECK_SEO_CONSOLE_FALLBACKS_OPTION ); ?>[_wpseo_console_robots]">
+									<?php foreach ( wpseo_console_get_field_definitions()['_wpseo_console_robots']['options'] as $option_value => $option_label ) : ?>
+										<option value="<?php echo esc_attr( $option_value ); ?>" <?php selected( $seo_fallbacks['_wpseo_console_robots'], $option_value ); ?>>
+											<?php echo esc_html( $option_label ); ?>
+										</option>
+									<?php endforeach; ?>
+								</select>
+							</label>
+							<label>
+								<span><?php esc_html_e( 'Fallback Open Graph Title', 'wp-control-deck' ); ?></span>
+								<input
+									type="text"
+									name="<?php echo esc_attr( WP_CONTROL_DECK_SEO_CONSOLE_FALLBACKS_OPTION ); ?>[_wpseo_console_og_title]"
+									value="<?php echo esc_attr( $seo_fallbacks['_wpseo_console_og_title'] ); ?>"
+								/>
+							</label>
+							<label>
+								<span><?php esc_html_e( 'Fallback Open Graph Description', 'wp-control-deck' ); ?></span>
+								<textarea
+									name="<?php echo esc_attr( WP_CONTROL_DECK_SEO_CONSOLE_FALLBACKS_OPTION ); ?>[_wpseo_console_og_description]"
+									rows="3"
+								><?php echo esc_textarea( $seo_fallbacks['_wpseo_console_og_description'] ); ?></textarea>
+							</label>
+							<label>
+								<span><?php esc_html_e( 'Fallback Open Graph Image', 'wp-control-deck' ); ?></span>
+								<div class="wpseo-console-image-select" data-wpseo-console-image-select>
+									<input
+										type="hidden"
+										name="<?php echo esc_attr( WP_CONTROL_DECK_SEO_CONSOLE_FALLBACKS_OPTION ); ?>[_wpseo_console_og_image]"
+										value="<?php echo esc_url( $seo_fallbacks['_wpseo_console_og_image'] ); ?>"
+										data-wpseo-console-image-input
+									/>
+									<div class="wpseo-console-image-preview" data-wpseo-console-image-preview>
+										<?php if ( $seo_fallbacks['_wpseo_console_og_image'] ) : ?>
+											<img src="<?php echo esc_url( $seo_fallbacks['_wpseo_console_og_image'] ); ?>" alt="" />
+										<?php endif; ?>
+									</div>
+									<button type="button" class="button" data-wpseo-console-image-button><?php esc_html_e( 'Select Image', 'wp-control-deck' ); ?></button>
+									<button type="button" class="button" data-wpseo-console-image-remove><?php esc_html_e( 'Remove', 'wp-control-deck' ); ?></button>
+								</div>
+							</label>
+							<label>
+								<span><?php esc_html_e( 'Fallback Twitter Card Type', 'wp-control-deck' ); ?></span>
+								<select name="<?php echo esc_attr( WP_CONTROL_DECK_SEO_CONSOLE_FALLBACKS_OPTION ); ?>[_wpseo_console_twitter_card]">
+									<?php foreach ( wpseo_console_get_field_definitions()['_wpseo_console_twitter_card']['options'] as $option_value => $option_label ) : ?>
+										<option value="<?php echo esc_attr( $option_value ); ?>" <?php selected( $seo_fallbacks['_wpseo_console_twitter_card'], $option_value ); ?>>
+											<?php echo esc_html( $option_label ); ?>
+										</option>
+									<?php endforeach; ?>
+								</select>
+							</label>
+						</div>
+					</div>
 					<?php submit_button( __( 'Save Settings', 'wp-control-deck' ), 'primary wp-control-deck-primary-button' ); ?>
 				</section>
 			</form>
@@ -406,6 +580,32 @@ function wp_control_deck_render_admin_page() {
 			display: flex;
 			gap: 24px;
 			justify-content: space-between;
+		}
+
+		.wp-control-deck-field-row {
+			align-items: center;
+			background: #f6f7f7;
+			border: 1px solid #e5e5e5;
+			border-radius: 8px;
+			display: flex;
+			gap: 16px;
+			justify-content: space-between;
+			margin-top: 18px;
+			padding: 14px;
+		}
+
+		.wp-control-deck-field-row label {
+			color: #1d2327;
+			font-size: 13px;
+			font-weight: 600;
+			line-height: 1.3;
+		}
+
+		.wp-control-deck-field-row select {
+			border: 1px solid #8c8f94;
+			border-radius: 6px;
+			min-height: 36px;
+			min-width: 180px;
 		}
 
 		.wp-control-deck-card .submit {
@@ -560,6 +760,12 @@ function wp_control_deck_render_admin_page() {
 				gap: 14px;
 			}
 
+			.wp-control-deck-field-row {
+				align-items: flex-start;
+				flex-direction: column;
+				gap: 8px;
+			}
+
 			.wp-control-deck-hotlink-row {
 				grid-template-columns: minmax(0, 1fr);
 			}
@@ -638,6 +844,63 @@ function wp_control_deck_sanitize_admin_bar_hotlinks( $hotlinks ) {
 }
 
 /**
+ * Sanitizes the page info display style.
+ *
+ * @param string $style Selected style.
+ * @return string
+ */
+function wp_control_deck_sanitize_page_info_style( $style ) {
+	$style = sanitize_key( $style );
+
+	if ( in_array( $style, array( 'default', 'glass' ), true ) ) {
+		return $style;
+	}
+
+	return 'default';
+}
+
+/**
+ * Sanitizes global SEO Console fallback values.
+ *
+ * @param array $fallbacks Submitted fallback values.
+ * @return array
+ */
+function wp_control_deck_sanitize_seo_console_fallbacks( $fallbacks ) {
+	if ( ! is_array( $fallbacks ) ) {
+		return array();
+	}
+
+	$allowed_keys = array(
+		'_wpseo_console_title',
+		'_wpseo_console_description',
+		'_wpseo_console_robots',
+		'_wpseo_console_og_title',
+		'_wpseo_console_og_description',
+		'_wpseo_console_og_image',
+		'_wpseo_console_twitter_card',
+	);
+	$sanitized    = array();
+	$definitions  = wpseo_console_get_field_definitions();
+
+	foreach ( $allowed_keys as $key ) {
+		if ( ! isset( $definitions[ $key ] ) ) {
+			continue;
+		}
+
+		$value = isset( $fallbacks[ $key ] ) ? $fallbacks[ $key ] : '';
+		$value = wpseo_console_sanitize_field( $value, $definitions[ $key ] );
+
+		if ( '' === $value || ( isset( $definitions[ $key ]['default'] ) && $value === $definitions[ $key ]['default'] ) ) {
+			continue;
+		}
+
+		$sanitized[ $key ] = $value;
+	}
+
+	return $sanitized;
+}
+
+/**
  * Gets post types that can reasonably use an editor screen.
  *
  * @return WP_Post_Type[]
@@ -686,6 +949,24 @@ function wp_control_deck_page_info_is_enabled() {
 }
 
 /**
+ * Checks whether the SEO Console module is enabled.
+ *
+ * @return bool
+ */
+function wp_control_deck_seo_console_is_enabled() {
+	return (bool) get_option( WP_CONTROL_DECK_SEO_CONSOLE_OPTION, false );
+}
+
+/**
+ * Gets the selected frontend page info display style.
+ *
+ * @return string
+ */
+function wp_control_deck_get_page_info_style() {
+	return wp_control_deck_sanitize_page_info_style( get_option( WP_CONTROL_DECK_PAGE_INFO_STYLE_OPTION, 'default' ) );
+}
+
+/**
  * Gets post types that should keep Gutenberg enabled.
  *
  * @return array
@@ -709,6 +990,224 @@ function wp_control_deck_get_admin_bar_hotlinks() {
 	$hotlinks = get_option( WP_CONTROL_DECK_ADMIN_BAR_HOTLINKS_OPTION, array() );
 
 	return wp_control_deck_sanitize_admin_bar_hotlinks( $hotlinks );
+}
+
+/**
+ * Gets global SEO Console fallback values.
+ *
+ * @return array
+ */
+function wp_control_deck_get_seo_console_fallbacks() {
+	$fallbacks   = get_option( WP_CONTROL_DECK_SEO_CONSOLE_FALLBACKS_OPTION, array() );
+	$definitions = wpseo_console_get_field_definitions();
+	$values      = array();
+
+	if ( ! is_array( $fallbacks ) ) {
+		$fallbacks = array();
+	}
+
+	foreach ( $definitions as $key => $field ) {
+		if ( '_wpseo_console_canonical' === $key ) {
+			continue;
+		}
+
+		$value = isset( $fallbacks[ $key ] ) ? $fallbacks[ $key ] : '';
+
+		if ( '' === $value && isset( $field['default'] ) ) {
+			$value = $field['default'];
+		}
+
+		$values[ $key ] = wpseo_console_sanitize_field( $value, $field );
+	}
+
+	return $values;
+}
+
+/**
+ * Enables the opt-in WP SEO Console module.
+ */
+function wp_control_deck_enable_seo_console() {
+	require_once WP_CONTROL_DECK_PATH . 'includes/class-wpseo-console-sanitizer.php';
+	require_once WP_CONTROL_DECK_PATH . 'includes/class-wpseo-console-admin-fields.php';
+	require_once WP_CONTROL_DECK_PATH . 'includes/class-wpseo-console-meta-output.php';
+
+	if ( ! class_exists( 'WPSEO_Console_Admin_Fields' ) || ! class_exists( 'WPSEO_Console_Meta_Output' ) ) {
+		return;
+	}
+
+	$admin_fields = new WPSEO_Console_Admin_Fields();
+	$meta_output  = new WPSEO_Console_Meta_Output();
+
+	if ( ! method_exists( $admin_fields, 'register' ) || ! method_exists( $meta_output, 'register' ) ) {
+		return;
+	}
+
+	$admin_fields->register();
+	$meta_output->register();
+}
+
+/**
+ * Gets post types supported by WP SEO Console.
+ *
+ * @return array
+ */
+function wpseo_console_get_supported_post_types() {
+	return array( 'post', 'page' );
+}
+
+/**
+ * Gets the SEO Console field map.
+ *
+ * @return array
+ */
+function wpseo_console_get_field_definitions() {
+	return array(
+		'_wpseo_console_title'           => array(
+			'label'   => __( 'SEO Title', 'wp-control-deck' ),
+			'type'    => 'text',
+			'counter' => 'title',
+			'help'    => __( 'Recommended length: 50-60 characters.', 'wp-control-deck' ),
+		),
+		'_wpseo_console_description'     => array(
+			'label'   => __( 'Meta Description', 'wp-control-deck' ),
+			'type'    => 'textarea',
+			'counter' => 'description',
+			'help'    => __( 'Recommended length: 120-160 characters.', 'wp-control-deck' ),
+		),
+		'_wpseo_console_robots'          => array(
+			'label'   => __( 'Robots Indexing', 'wp-control-deck' ),
+			'type'    => 'select',
+			'default' => 'default',
+			'options' => array(
+				'default'          => __( 'Default', 'wp-control-deck' ),
+				'index'            => __( 'index', 'wp-control-deck' ),
+				'noindex'          => __( 'noindex', 'wp-control-deck' ),
+				'nofollow'         => __( 'nofollow', 'wp-control-deck' ),
+				'noindex,nofollow' => __( 'noindex,nofollow', 'wp-control-deck' ),
+			),
+		),
+		'_wpseo_console_canonical'       => array(
+			'label' => __( 'Canonical URL', 'wp-control-deck' ),
+			'type'  => 'url',
+		),
+		'_wpseo_console_og_title'        => array(
+			'label' => __( 'Open Graph Title', 'wp-control-deck' ),
+			'type'  => 'text',
+		),
+		'_wpseo_console_og_description'  => array(
+			'label' => __( 'Open Graph Description', 'wp-control-deck' ),
+			'type'  => 'textarea',
+		),
+		'_wpseo_console_og_image'        => array(
+			'label' => __( 'Open Graph Image', 'wp-control-deck' ),
+			'type'  => 'image',
+		),
+		'_wpseo_console_twitter_card'    => array(
+			'label'   => __( 'Twitter Card Type', 'wp-control-deck' ),
+			'type'    => 'select',
+			'default' => 'summary',
+			'options' => array(
+				'summary'             => __( 'summary', 'wp-control-deck' ),
+				'summary_large_image' => __( 'summary_large_image', 'wp-control-deck' ),
+			),
+		),
+	);
+}
+
+/**
+ * Sanitizes a SEO Console field according to its configured type.
+ *
+ * @param mixed $value Raw value.
+ * @param array $field Field definition.
+ * @return string
+ */
+function wpseo_console_sanitize_field( $value, $field ) {
+	if ( ! class_exists( 'WPSEO_Console_Sanitizer' ) ) {
+		require_once WP_CONTROL_DECK_PATH . 'includes/class-wpseo-console-sanitizer.php';
+	}
+
+	if ( 'textarea' === $field['type'] ) {
+		return WPSEO_Console_Sanitizer::textarea( $value );
+	}
+
+	if ( 'url' === $field['type'] || 'image' === $field['type'] ) {
+		return WPSEO_Console_Sanitizer::url( $value );
+	}
+
+	if ( 'select' === $field['type'] ) {
+		return WPSEO_Console_Sanitizer::choice( $value, array_keys( $field['options'] ), $field['default'] );
+	}
+
+	return WPSEO_Console_Sanitizer::text( $value );
+}
+
+/**
+ * Gets sanitized SEO Console values for a post.
+ *
+ * @param int $post_id Post ID.
+ * @return array
+ */
+function wpseo_console_get_post_meta_values( $post_id ) {
+	$values = array();
+
+	foreach ( wpseo_console_get_field_definitions() as $key => $field ) {
+		$value = get_post_meta( $post_id, $key, true );
+
+		if ( '' === $value && isset( $field['default'] ) ) {
+			$value = $field['default'];
+		}
+
+		$values[ $key ] = wpseo_console_sanitize_field( $value, $field );
+	}
+
+	return $values;
+}
+
+/**
+ * Checks whether a post has any non-default SEO Console metadata saved.
+ *
+ * @param int $post_id Post ID.
+ * @return bool
+ */
+function wpseo_console_post_has_meta_values( $post_id ) {
+	foreach ( wpseo_console_get_field_definitions() as $key => $field ) {
+		$value = get_post_meta( $post_id, $key, true );
+
+		if ( '' === $value ) {
+			continue;
+		}
+
+		if ( isset( $field['default'] ) && $value === $field['default'] ) {
+			continue;
+		}
+
+		return true;
+	}
+
+	return false;
+}
+
+/**
+ * Gets SEO values, using global fallbacks only when no post meta is present.
+ *
+ * @param int $post_id Post ID.
+ * @return array
+ */
+function wpseo_console_get_effective_meta_values( $post_id ) {
+	if ( wpseo_console_post_has_meta_values( $post_id ) ) {
+		return wpseo_console_get_post_meta_values( $post_id );
+	}
+
+	$values    = wpseo_console_get_post_meta_values( $post_id );
+	$fallbacks = wp_control_deck_get_seo_console_fallbacks();
+
+	foreach ( $fallbacks as $key => $value ) {
+		if ( isset( $values[ $key ] ) && '' !== $value ) {
+			$values[ $key ] = $value;
+		}
+	}
+
+	return $values;
 }
 
 /**
@@ -753,6 +1252,8 @@ function wp_control_deck_render_page_info() {
 	if ( ! current_user_can( 'manage_options' ) ) {
 		return;
 	}
+
+	$page_info_style = wp_control_deck_get_page_info_style();
 	?>
 	<style>
 		#wp-control-deck-page-info {
@@ -760,6 +1261,7 @@ function wp_control_deck_render_page_info() {
 			border: 1px solid rgba(255, 255, 255, .14);
 			border-radius: 8px;
 			bottom: 16px;
+			box-sizing: border-box;
 			box-shadow: 0 12px 30px rgba(0, 0, 0, .24);
 			color: #f9fafb;
 			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -774,9 +1276,49 @@ function wp_control_deck_render_page_info() {
 			z-index: 999999;
 		}
 
+		#wp-control-deck-page-info.wp-control-deck-page-info-style-glass {
+			-webkit-backdrop-filter: blur(20px) saturate(210%) contrast(108%);
+			backdrop-filter: blur(20px) saturate(210%) contrast(108%);
+			align-items: start;
+			background:
+				linear-gradient(135deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .035) 42%, rgba(255, 255, 255, .12)),
+				rgba(255, 255, 255, .045);
+			border-color: rgba(255, 255, 255, .38);
+			border-radius: 10px;
+			box-shadow:
+				inset 0 1px 0 rgba(255, 255, 255, .46),
+				inset 0 0 0 1px rgba(255, 255, 255, .08),
+				0 18px 44px rgba(15, 23, 42, .16);
+			color: #0f172a;
+			display: grid;
+			gap: 7px;
+			grid-template-columns: minmax(0, 1fr);
+			max-width: min(760px, calc(100vw - 32px));
+			overflow: hidden;
+			padding: 10px 16px;
+			text-align: left;
+			text-shadow: 0 1px 0 rgba(255, 255, 255, .35);
+			width: min(760px, calc(100vw - 32px));
+		}
+
+		#wp-control-deck-page-info.wp-control-deck-page-info-style-glass::before {
+			background:
+				linear-gradient(115deg, rgba(255, 255, 255, .32), rgba(255, 255, 255, 0) 26%),
+				linear-gradient(290deg, rgba(255, 255, 255, .18), rgba(255, 255, 255, 0) 34%),
+				radial-gradient(circle at 18% 0%, rgba(255, 255, 255, .28), transparent 24%);
+			content: "";
+			inset: 0;
+			pointer-events: none;
+			position: absolute;
+		}
+
 		#wp-control-deck-page-info.is-scrolling {
 			opacity: .4;
 			transform: translateX(calc(-100% - 24px));
+		}
+
+		#wp-control-deck-page-info.wp-control-deck-page-info-style-glass.is-scrolling {
+			transform: translateY(calc(100% + 24px));
 		}
 
 		#wp-control-deck-page-info * {
@@ -790,6 +1332,16 @@ function wp_control_deck_render_page_info() {
 			margin-bottom: 8px;
 		}
 
+		#wp-control-deck-page-info.wp-control-deck-page-info-style-glass strong {
+			color: #0f172a;
+			font-size: 12px;
+			margin: 0;
+			position: relative;
+			text-align: left;
+			white-space: nowrap;
+			z-index: 1;
+		}
+
 		#wp-control-deck-page-info dl {
 			display: grid;
 			gap: 6px 10px;
@@ -797,10 +1349,24 @@ function wp_control_deck_render_page_info() {
 			margin: 0;
 		}
 
+		#wp-control-deck-page-info.wp-control-deck-page-info-style-glass dl {
+			gap: 4px 8px;
+			grid-template-columns: repeat(3, max-content minmax(58px, 1fr));
+			position: relative;
+			text-align: left;
+			z-index: 1;
+		}
+
 		#wp-control-deck-page-info dt {
 			color: #cbd5e1;
 			font-weight: 600;
 			margin: 0;
+		}
+
+		#wp-control-deck-page-info.wp-control-deck-page-info-style-glass dt {
+			color: rgba(15, 23, 42, .72);
+			font-size: 10px;
+			white-space: nowrap;
 		}
 
 		#wp-control-deck-page-info dd {
@@ -810,20 +1376,45 @@ function wp_control_deck_render_page_info() {
 			overflow-wrap: anywhere;
 		}
 
+		#wp-control-deck-page-info.wp-control-deck-page-info-style-glass dd {
+			color: #0f172a;
+			font-size: 10px;
+			font-weight: 700;
+			line-height: 1.3;
+			max-height: 2.6em;
+			overflow: hidden;
+		}
+
 		#wp-control-deck-page-info dd.is-good {
 			color: #86efac;
+		}
+
+		#wp-control-deck-page-info.wp-control-deck-page-info-style-glass dd.is-good {
+			color: #047857;
 		}
 
 		#wp-control-deck-page-info dd.is-medium {
 			color: #fdba74;
 		}
 
+		#wp-control-deck-page-info.wp-control-deck-page-info-style-glass dd.is-medium {
+			color: #b45309;
+		}
+
 		#wp-control-deck-page-info dd.is-high {
 			color: #fca5a5;
 		}
 
+		#wp-control-deck-page-info.wp-control-deck-page-info-style-glass dd.is-high {
+			color: #b91c1c;
+		}
+
 		#wp-control-deck-page-info dd.is-unavailable {
 			color: #cbd5e1;
+		}
+
+		#wp-control-deck-page-info.wp-control-deck-page-info-style-glass dd.is-unavailable {
+			color: rgba(15, 23, 42, .58);
 		}
 
 		#wp-control-deck-page-info .wp-control-deck-page-info-disclaimer {
@@ -834,10 +1425,41 @@ function wp_control_deck_render_page_info() {
 			margin: 10px 0 0;
 			padding-top: 8px;
 		}
+
+		#wp-control-deck-page-info.wp-control-deck-page-info-style-glass .wp-control-deck-page-info-disclaimer {
+			border-top: 1px solid rgba(15, 23, 42, .1);
+			color: rgba(15, 23, 42, .62);
+			font-size: 9px;
+			line-height: 1.2;
+			margin: 10px 0 0;
+			padding-top: 5px;
+			position: relative;
+			z-index: 1;
+		}
+
+		@media (max-width: 782px) {
+			#wp-control-deck-page-info.wp-control-deck-page-info-style-glass {
+				bottom: 20px;
+				grid-template-columns: minmax(0, 1fr);
+				left: 20px;
+				max-width: none;
+				right: 20px;
+				width: auto;
+			}
+
+			#wp-control-deck-page-info.wp-control-deck-page-info-style-glass dl {
+				grid-template-columns: max-content minmax(0, 1fr);
+			}
+
+			#wp-control-deck-page-info.wp-control-deck-page-info-style-glass .wp-control-deck-page-info-disclaimer {
+				grid-column: auto;
+			}
+		}
 	</style>
 	<script>
 		(function () {
 			var unavailable = <?php echo wp_json_encode( __( 'Unavailable', 'wp-control-deck' ) ); ?>;
+			var pageInfoStyle = <?php echo wp_json_encode( $page_info_style ); ?>;
 
 			function getEntrySize(entry) {
 				return entry.transferSize || entry.encodedBodySize || entry.decodedBodySize || 0;
@@ -996,6 +1618,7 @@ function wp_control_deck_render_page_info() {
 				var metaTitle = document.title || '';
 
 				box.id = 'wp-control-deck-page-info';
+				box.className = 'wp-control-deck-page-info-style-' + pageInfoStyle;
 				box.setAttribute('aria-label', <?php echo wp_json_encode( __( 'WP Control Deck Page Info', 'wp-control-deck' ) ); ?>);
 				title.textContent = <?php echo wp_json_encode( __( 'Page Info', 'wp-control-deck' ) ); ?>;
 				disclaimer.className = 'wp-control-deck-page-info-disclaimer';
