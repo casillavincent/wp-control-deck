@@ -195,6 +195,32 @@ function wp_control_deck_register_settings() {
 }
 
 /**
+ * Gets one-time notices for the WP Control Deck dashboard.
+ *
+ * @return array
+ */
+function wp_control_deck_get_admin_page_notices() {
+	$notices       = array();
+	$transient_key = 'wp_control_deck_deleted_comments_' . get_current_user_id();
+	$deleted_count = get_transient( $transient_key );
+
+	if ( false !== $deleted_count ) {
+		delete_transient( $transient_key );
+
+		$notices[] = array(
+			'type'    => 'success',
+			'message' => sprintf(
+				/* translators: %d: number of deleted comments. */
+				_n( '%d comment deleted.', '%d comments deleted.', absint( $deleted_count ), 'wp-control-deck' ),
+				absint( $deleted_count )
+			),
+		);
+	}
+
+	return $notices;
+}
+
+/**
  * Renders the WP Control Deck admin page.
  */
 function wp_control_deck_render_admin_page() {
@@ -211,27 +237,29 @@ function wp_control_deck_render_admin_page() {
 	$seo_console_enabled  = wp_control_deck_seo_console_is_enabled();
 	$seo_fallbacks        = wp_control_deck_get_seo_console_fallbacks();
 	$post_types           = wp_control_deck_get_editor_post_types();
-	$deleted_count        = isset( $_GET['wp_control_deck_deleted_comments'] ) ? absint( $_GET['wp_control_deck_deleted_comments'] ) : null;
+	$notices              = wp_control_deck_get_admin_page_notices();
 	$delete_confirm       = __( 'Are you sure you want to permanently delete all existing comments? This cannot be undone.', 'wp-control-deck' );
 	?>
 	<div class="wrap wp-control-deck-page">
-		<div class="wp-control-deck-header">
-			<h1><?php esc_html_e( 'WP Control Deck', 'wp-control-deck' ); ?></h1>
-		</div>
-
-		<?php if ( null !== $deleted_count ) : ?>
-			<div class="notice notice-success is-dismissible">
-				<p>
-					<?php
-					printf(
-						/* translators: %d: number of deleted comments. */
-						esc_html( _n( '%d comment deleted.', '%d comments deleted.', $deleted_count, 'wp-control-deck' ) ),
-						absint( $deleted_count )
-					);
-					?>
-				</p>
+		<div class="wp-control-deck-hero">
+			<?php if ( ! empty( $notices ) ) : ?>
+				<div class="wp-control-deck-notices">
+					<?php foreach ( $notices as $notice ) : ?>
+						<div class="notice notice-<?php echo esc_attr( $notice['type'] ); ?> is-dismissible">
+							<p><?php echo esc_html( $notice['message'] ); ?></p>
+						</div>
+					<?php endforeach; ?>
+				</div>
+			<?php endif; ?>
+			<div>
+				<span class="wp-control-deck-kicker"><?php esc_html_e( 'Control Console', 'wp-control-deck' ); ?></span>
+				<p><?php esc_html_e( 'CONTROL_DECK', 'wp-control-deck' ); ?></p>
 			</div>
-		<?php endif; ?>
+			<div class="wp-control-deck-console-count">
+				<span><?php esc_html_e( 'Modules', 'wp-control-deck' ); ?></span>
+				<strong>06</strong>
+			</div>
+		</div>
 
 		<div class="wp-control-deck-grid">
 			<form class="wp-control-deck-settings-form" method="post" action="options.php">
@@ -487,7 +515,7 @@ function wp_control_deck_render_admin_page() {
 						__( 'Delete Existing Comments', 'wp-control-deck' ),
 						'delete wp-control-deck-delete-button',
 						'submit',
-						false,
+						true,
 						array( 'onclick' => sprintf( 'return confirm(%s);', wp_json_encode( $delete_confirm ) ) )
 					);
 					?>
@@ -498,72 +526,147 @@ function wp_control_deck_render_admin_page() {
 
 	<style>
 		.wp-control-deck-page {
-			max-width: 980px;
+			color: #101010;
+			font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			max-width: 1180px;
 		}
 
-		.wp-control-deck-header {
-			align-items: center;
-			background: #fff;
-			border: 1px solid #dcdcde;
-			border-radius: 8px;
-			box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+		.wp-control-deck-kicker,
+		.wp-control-deck-console-count span,
+		.wp-control-deck-card-header h2,
+		.wp-control-deck-field-row label,
+		.wp-control-deck-hotlink-row span,
+		.wp-control-deck-field-stack span {
+			font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+			letter-spacing: 0;
+			text-transform: uppercase;
+		}
+
+		.wp-control-deck-console-count {
+			align-items: flex-end;
 			display: flex;
-			justify-content: space-between;
-			margin: 24px 0 18px;
-			padding: 22px 24px;
+			flex-direction: column;
+			gap: 4px;
 		}
 
-		.wp-control-deck-header h1 {
-			color: #1d2327;
-			font-size: 26px;
-			font-weight: 600;
-			line-height: 1.2;
+		.wp-control-deck-console-count span {
+			color: #5f5f59;
+			font-size: 10px;
+		}
+
+		.wp-control-deck-console-count strong {
+			color: #101010;
+			font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+			font-size: 16px;
+			line-height: 1;
+		}
+
+		.wp-control-deck-hero {
+			align-items: end;
+			background:
+				linear-gradient(to right, rgba(16, 16, 16, .08) 1px, transparent 1px),
+				linear-gradient(to bottom, rgba(16, 16, 16, .08) 1px, transparent 1px),
+				#efefed;
+			background-size: 25% 100%, 100% 72px;
+			border: 1px solid #c9c9c4;
+			border-radius: 10px;
+			display: grid;
+			gap: 24px;
+			grid-template-columns: minmax(0, 1fr) auto;
+			margin: 24px 0 16px;
+			min-height: 190px;
+			padding: 30px 34px;
+			position: relative;
+		}
+
+		.wp-control-deck-notices {
+			position: absolute;
+			right: 18px;
+			top: 18px;
+			width: min(420px, calc(100% - 36px));
+			z-index: 2;
+		}
+
+		.wp-control-deck-notices .notice {
+			margin: 0 0 8px;
+		}
+
+		.wp-control-deck-kicker {
+			background: #101010;
+			color: #fff;
+			display: inline-block;
+			font-size: 11px;
+			line-height: 1;
+			margin-bottom: 16px;
+			padding: 6px 8px;
+		}
+
+		.wp-control-deck-hero p {
+			color: #101010;
+			font-size: clamp(28px, 5vw, 64px);
+			font-weight: 800;
+			line-height: .95;
 			margin: 0;
+			max-width: 850px;
 		}
 
 		.wp-control-deck-grid {
 			display: grid;
-			gap: 16px;
+			gap: 14px;
 			grid-template-columns: minmax(0, 1fr);
 		}
 
 		.wp-control-deck-settings-form {
 			display: grid;
-			gap: 16px;
+			gap: 14px;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 
 		.wp-control-deck-card {
-			background: #fff;
-			border: 1px solid #dcdcde;
-			border-radius: 8px;
-			box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
-			padding: 22px 24px;
+			background: #f7f7f5;
+			border: 1px solid #c9c9c4;
+			border-radius: 10px;
+			box-shadow: none;
+			overflow: hidden;
+			padding: 0;
+		}
+
+		.wp-control-deck-settings-form .wp-control-deck-card:nth-of-type(5) {
+			grid-column: 1 / -1;
 		}
 
 		.wp-control-deck-card-header {
-			border-bottom: 1px solid #f0f0f1;
-			margin: -2px 0 18px;
-			padding-bottom: 14px;
+			align-items: center;
+			background: #efefed;
+			border-bottom: 1px solid #c9c9c4;
+			display: flex;
+			justify-content: space-between;
+			margin: 0;
+			min-height: 42px;
+			padding: 0 14px;
+		}
+
+		.wp-control-deck-card-header h2 {
+			color: #101010;
+			font-size: 11px;
+			font-weight: 500;
+			margin: 0;
 		}
 
 		.wp-control-deck-card h2,
 		.wp-control-deck-card h3 {
-			color: #1d2327;
+			color: #101010;
+			font-weight: 700;
 			margin: 0;
 		}
 
-		.wp-control-deck-card h2 {
-			font-size: 18px;
-			line-height: 1.3;
-		}
-
-		.wp-control-deck-card h3 {
-			font-size: 15px;
-			line-height: 1.4;
+		.wp-control-deck-setting-row h3 {
+			font-size: 22px;
+			line-height: 1.15;
 		}
 
 		.wp-control-deck-card p {
-			color: #50575e;
+			color: #4c4c46;
 			font-size: 13px;
 			line-height: 1.55;
 			margin: 8px 0 0;
@@ -571,8 +674,13 @@ function wp_control_deck_render_admin_page() {
 		}
 
 		.wp-control-deck-card .wp-control-deck-warning {
-			color: #b32d2e;
+			color: #a53a16;
 			font-weight: 600;
+		}
+
+		.wp-control-deck-card > p {
+			margin: 0;
+			padding: 20px 20px 0;
 		}
 
 		.wp-control-deck-setting-row {
@@ -580,45 +688,55 @@ function wp_control_deck_render_admin_page() {
 			display: flex;
 			gap: 24px;
 			justify-content: space-between;
+			padding: 20px;
 		}
 
 		.wp-control-deck-field-row {
 			align-items: center;
-			background: #f6f7f7;
-			border: 1px solid #e5e5e5;
+			background: #efefed;
+			border: 1px solid #d8d8d4;
 			border-radius: 8px;
 			display: flex;
 			gap: 16px;
 			justify-content: space-between;
-			margin-top: 18px;
+			margin: 0 20px 20px;
 			padding: 14px;
 		}
 
 		.wp-control-deck-field-row label {
-			color: #1d2327;
-			font-size: 13px;
-			font-weight: 600;
+			color: #101010;
+			font-size: 11px;
+			font-weight: 500;
 			line-height: 1.3;
 		}
 
-		.wp-control-deck-field-row select {
-			border: 1px solid #8c8f94;
+		.wp-control-deck-field-row select,
+		.wp-control-deck-hotlink-row input,
+		.wp-control-deck-field-stack input,
+		.wp-control-deck-field-stack textarea,
+		.wp-control-deck-field-stack select {
+			background-color: #fff;
+			border: 1px solid #b7b7b0;
 			border-radius: 6px;
 			min-height: 36px;
+		}
+
+		.wp-control-deck-field-row select {
 			min-width: 180px;
 		}
 
 		.wp-control-deck-card .submit {
-			margin: 20px 0 0;
-			padding: 0;
+			border-top: 1px solid #d8d8d4;
+			margin: 0;
+			padding: 14px 20px;
 		}
 
 		.wp-control-deck-exclusions {
-			background: #f6f7f7;
-			border: 1px solid #e5e5e5;
+			background: #efefed;
+			border: 1px solid #d8d8d4;
 			border-radius: 8px;
 			display: none;
-			margin-top: 18px;
+			margin: 0 20px 20px;
 			padding: 16px;
 		}
 
@@ -636,7 +754,7 @@ function wp_control_deck_render_admin_page() {
 		.wp-control-deck-checkbox {
 			align-items: center;
 			background: #fff;
-			border: 1px solid #dcdcde;
+			border: 1px solid #c9c9c4;
 			border-radius: 6px;
 			display: flex;
 			gap: 8px;
@@ -645,7 +763,7 @@ function wp_control_deck_render_admin_page() {
 		}
 
 		.wp-control-deck-checkbox span {
-			color: #1d2327;
+			color: #101010;
 			font-size: 13px;
 			font-weight: 500;
 			line-height: 1.3;
@@ -654,12 +772,12 @@ function wp_control_deck_render_admin_page() {
 		.wp-control-deck-hotlinks {
 			display: grid;
 			gap: 14px;
-			margin-top: 16px;
+			padding: 20px;
 		}
 
 		.wp-control-deck-hotlink-row {
-			background: #f6f7f7;
-			border: 1px solid #e5e5e5;
+			background: #efefed;
+			border: 1px solid #d8d8d4;
 			border-radius: 8px;
 			display: grid;
 			gap: 12px;
@@ -673,37 +791,115 @@ function wp_control_deck_render_admin_page() {
 		}
 
 		.wp-control-deck-hotlink-row span {
-			color: #1d2327;
-			font-size: 13px;
-			font-weight: 600;
+			color: #101010;
+			font-size: 11px;
+			font-weight: 500;
 			line-height: 1.3;
 		}
 
 		.wp-control-deck-hotlink-row input {
-			border: 1px solid #8c8f94;
-			border-radius: 6px;
-			min-height: 36px;
 			width: 100%;
+		}
+
+		.wp-control-deck-fallback-fields {
+			background: #efefed;
+			border: 1px solid #d8d8d4;
+			border-radius: 8px;
+			margin: 0 20px 20px;
+			padding: 16px;
+		}
+
+		.wp-control-deck-field-stack {
+			display: grid;
+			gap: 14px;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			margin-top: 16px;
+		}
+
+		.wp-control-deck-field-stack label {
+			display: grid;
+			gap: 6px;
+		}
+
+		.wp-control-deck-field-stack label:has(textarea),
+		.wp-control-deck-field-stack label:has(.wpseo-console-image-select) {
+			grid-column: 1 / -1;
+		}
+
+		.wp-control-deck-field-stack input,
+		.wp-control-deck-field-stack textarea,
+		.wp-control-deck-field-stack select {
+			width: 100%;
+		}
+
+		.wpseo-console-image-select {
+			align-items: center;
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+		}
+
+		.wpseo-console-image-preview {
+			background: #fff;
+			border: 1px dashed #b7b7b0;
+			border-radius: 6px;
+			min-height: 72px;
+			width: 100%;
+		}
+
+		.wpseo-console-image-preview img {
+			border-radius: 6px;
+			display: block;
+			height: auto;
+			max-width: 180px;
+		}
+
+		.wpseo-console-image-preview:has(img) {
+			background: transparent;
+			border: 0;
+			min-height: 0;
+			width: auto;
 		}
 
 		.wp-control-deck-primary-button,
 		.wp-control-deck-delete-button {
 			border-radius: 6px !important;
+			font-family: ui-monospace, "SFMono-Regular", Consolas, monospace !important;
+			font-size: 11px !important;
+			font-weight: 700 !important;
 			min-height: 36px;
 			padding-left: 16px !important;
 			padding-right: 16px !important;
+			text-transform: uppercase;
+		}
+
+		.wp-control-deck-primary-button {
+			background: #101010 !important;
+			border-color: #101010 !important;
+		}
+
+		.wp-control-deck-delete-button {
+			background: #b32d2e !important;
+			border-color: #b32d2e !important;
+			color: #fff !important;
 		}
 
 		.wp-control-deck-danger-card {
-			border-color: #f0c2c2;
+			border-color: #e4a891;
+			grid-column: 1 / -1;
+		}
+
+		.wp-control-deck-danger-card .wp-control-deck-card-header {
+			background: #f4ebe7;
+			border-bottom-color: #e4a891;
 		}
 
 		.wp-control-deck-switch {
 			display: inline-block;
 			flex: 0 0 auto;
-			height: 24px;
+			height: 28px;
 			position: relative;
-			width: 44px;
+			width: 52px;
 		}
 
 		.wp-control-deck-switch input {
@@ -713,7 +909,7 @@ function wp_control_deck_render_admin_page() {
 		}
 
 		.wp-control-deck-slider {
-			background-color: #8c8f94;
+			background-color: #b7b7b0;
 			border-radius: 999px;
 			bottom: 0;
 			cursor: pointer;
@@ -727,31 +923,50 @@ function wp_control_deck_render_admin_page() {
 		.wp-control-deck-slider::before {
 			background-color: #fff;
 			border-radius: 50%;
-			bottom: 3px;
+			bottom: 4px;
 			content: "";
-			height: 18px;
-			left: 3px;
+			height: 20px;
+			left: 4px;
 			position: absolute;
 			transition: .15s;
-			width: 18px;
+			width: 20px;
 		}
 
 		.wp-control-deck-switch input:checked + .wp-control-deck-slider {
-			background-color: #2271b1;
+			background-color: #ff6a2a;
 		}
 
 		.wp-control-deck-switch input:focus + .wp-control-deck-slider {
-			box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2271b1;
+			box-shadow: 0 0 0 2px #fff, 0 0 0 4px #ff6a2a;
 		}
 
 		.wp-control-deck-switch input:checked + .wp-control-deck-slider::before {
-			transform: translateX(20px);
+			transform: translateX(24px);
 		}
 
 		@media (max-width: 782px) {
-			.wp-control-deck-header,
+			.wp-control-deck-settings-form,
+			.wp-control-deck-hero {
+				grid-template-columns: minmax(0, 1fr);
+			}
+
 			.wp-control-deck-card {
-				padding: 18px;
+				border-radius: 8px;
+			}
+
+			.wp-control-deck-hero {
+				min-height: 0;
+				padding: 22px;
+			}
+
+			.wp-control-deck-notices {
+				margin-bottom: 18px;
+				position: static;
+				width: 100%;
+			}
+
+			.wp-control-deck-hero p {
+				font-size: 32px;
 			}
 
 			.wp-control-deck-setting-row {
@@ -767,6 +982,10 @@ function wp_control_deck_render_admin_page() {
 			}
 
 			.wp-control-deck-hotlink-row {
+				grid-template-columns: minmax(0, 1fr);
+			}
+
+			.wp-control-deck-field-stack {
 				grid-template-columns: minmax(0, 1fr);
 			}
 		}
@@ -1838,13 +2057,9 @@ function wp_control_deck_handle_delete_comments() {
 	check_admin_referer( 'wp_control_deck_delete_comments' );
 
 	$deleted_count = wp_control_deck_delete_all_comments();
-	$redirect_url  = add_query_arg(
-		array(
-			'page'                             => 'wp-control-deck',
-			'wp_control_deck_deleted_comments' => $deleted_count,
-		),
-		admin_url( 'admin.php' )
-	);
+	set_transient( 'wp_control_deck_deleted_comments_' . get_current_user_id(), $deleted_count, MINUTE_IN_SECONDS );
+
+	$redirect_url = add_query_arg( 'page', 'wp-control-deck', admin_url( 'admin.php' ) );
 
 	wp_safe_redirect( $redirect_url );
 	exit;
